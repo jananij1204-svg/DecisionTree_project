@@ -1,79 +1,98 @@
 import streamlit as st
 import pickle
 import pandas as pd
+import numpy as np
 
-# -------------------------
-# Load model
-# -------------------------
+# ---------------------------
+# Load Model
+# ---------------------------
 MODEL_PATH = "decision.pkl"
 
 try:
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
 except FileNotFoundError:
-    st.error("❌ Model file 'decision.pkl' not found. Place it in the same folder as app.py")
+    st.error("❌ Model file 'decision.pkl' not found. Place it next to app.py")
     st.stop()
 
-st.title("🚢 Titanic Survival Prediction - Decision Tree Model")
-st.write("Enter passenger details to predict survival")
+st.title("🎬 Movie Interest Prediction App")
+st.write("Enter the details below to predict movie interest")
 
-# --------------------------------
-# USER INPUT FIELDS
-# --------------------------------
+# ---------------------------
+# Detect Features Automatically
+# ---------------------------
 
-passenger_id = st.number_input("Passenger ID", min_value=1, value=100)
-p_class = st.selectbox("Passenger Class (p_class)", [1, 2, 3])
-sex = st.selectbox("Sex", ["male", "female"])
-age = st.slider("Age", 0, 80, 30)
-sib_sp = st.number_input("Siblings/Spouses Aboard (sib_sp)", 0, 10, 0)
-parch = st.number_input("Parents/Children Aboard (parch)", 0, 10, 0)
-fare = st.number_input("Fare", 0.0, 600.0, 32.0)
-embarked = st.selectbox("Embarked", ["S", "C", "Q"])
+if hasattr(model, "feature_names_in_"):
+    feature_names = list(model.feature_names_in_)
+else:
+    st.error("❌ Model does not contain feature names. Please retrain with feature names.")
+    st.stop()
 
-# --------------------------------
-# ENCODING (MUST MATCH TRAINING)
-# --------------------------------
+st.info(f"Detected Features: {', '.join(feature_names)}")
 
-sex_map = {"male": 1, "female": 0}
-embarked_map = {"S": 0, "C": 1, "Q": 2}
+# ---------------------------
+# Auto-Generate Input Fields
+# ---------------------------
 
-sex_encoded = sex_map[sex]
-embarked_encoded = embarked_map[embarked]
+user_inputs = {}
 
-# --------------------------------
-# BUILD INPUT DATAFRAME
-# --------------------------------
+for feature in feature_names:
 
-input_data = pd.DataFrame({
-    "passenger_id": [passenger_id],
-    "p_class": [p_class],
-    "sex": [sex_encoded],
-    "age": [age],
-    "sib_sp": [sib_sp],
-    "parch": [parch],
-    "fare": [fare],
-    "embarked": [embarked_encoded]
-})
+    # If feature is numeric
+    if "age" in feature.lower():
+        user_inputs[feature] = st.slider(feature, 0, 100, 25)
 
-# --------------------------------
-# PREDICTION
-# --------------------------------
+    elif "rating" in feature.lower():
+        user_inputs[feature] = st.slider(feature, 0, 10, 5)
 
-if st.button("Predict"):
+    elif "interest" in feature.lower():
+        user_inputs[feature] = st.slider(feature, 0, 5, 2)
+
+    # For categorical strings
+    elif feature.lower() in ["gender", "sex"]:
+        user_inputs[feature] = st.selectbox(feature, ["male", "female"])
+
+    elif feature.lower() in ["genre", "movie_genre"]:
+        user_inputs[feature] = st.selectbox(feature, 
+                                            ["Action", "Comedy", "Drama", "Horror", "Romance", "Sci-Fi"])
+
+    else:
+        # Default numeric input
+        user_inputs[feature] = st.number_input(feature, value=0.0)
+
+
+# ---------------------------
+# Convert categorical values
+# ---------------------------
+
+row = {}
+
+for feature, value in user_inputs.items():
+    if isinstance(value, str):
+        # Convert categorical to integer labels
+        row[feature] = pd.factorize([value])[0][0]
+    else:
+        row[feature] = value
+
+input_df = pd.DataFrame([row])
+
+# ---------------------------
+# Prediction
+# ---------------------------
+
+if st.button("Predict Movie Interest"):
     try:
-        pred = model.predict(input_data)[0]
+        pred = model.predict(input_df)[0]
 
-        if pred == 1:
-            st.success("✔ The passenger SURVIVED")
-        else:
-            st.error("❌ The passenger DID NOT SURVIVE")
-
-        # Probability (if available)
         try:
-            prob = model.predict_proba(input_data)[0][1]
-            st.info(f"Survival Probability: {prob:.2f}")
+            prob = model.predict_proba(input_df)[0]
         except:
-            pass
+            prob = None
+
+        st.success(f"🎯 Prediction: {pred}")
+
+        if prob is not None:
+            st.info(f"📊 Probability: {prob}")
 
     except Exception as e:
-        st.error(f"❌ Prediction failed: {e}")
+        st.error(f"Prediction failed: {e}")
